@@ -2,9 +2,9 @@ name: Daily Weather Email
 
 on:
   schedule:
-    # Runs at 7:00 AM PKT (2:00 AM UTC) every day
+    # 7:00 AM PKT is 2:00 AM UTC
     - cron: '0 2 * * *'
-  workflow_dispatch: # Allows you to click "Run workflow" manually
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -25,9 +25,10 @@ jobs:
 
       - name: Run weather script
         env:
-          # This connects your secrets to the Python script
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           WEATHER_CITY: "Islamabad"
+          # CHANGE THE EMAIL BELOW TO YOUR NEW RECIPIENT
+          EMAIL_RECIPIENT: "new-email@example.com"
         run: python weather_email.py
