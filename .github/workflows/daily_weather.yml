@@ -29,6 +29,6 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           WEATHER_CITY: "Islamabad"
-          # CHANGE THE EMAIL BELOW TO YOUR NEW RECIPIENT
-          EMAIL_RECIPIENT: "new-email@example.com"
+          # This is the new recipient you provided
+          EMAIL_RECIPIENT: "adspk243@gmail.com"
         run: python weather_email.py
