@@ -1,0 +1,31 @@
+name: Daily Weather Email
+
+on:
+  schedule:
+    # 7:00 AM PKT is 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # This lets you run it manually for testing
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weather script
+        env:
+          # This connects your GitHub Secrets to your Python script
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+          WEATHER_CITY: "Islamabad"
+        run: python weather_email.py
