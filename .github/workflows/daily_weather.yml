@@ -2,8 +2,9 @@ name: Daily Weather Email
 
 on:
   schedule:
-    # 7:00 AM PKT is 2:00 AM UTC
+    # This is 2:00 AM UTC (7:00 AM PKT)
     - cron: '0 2 * * *'
+  # This allows manual testing
   workflow_dispatch: 
 
 jobs:
@@ -29,6 +30,5 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           WEATHER_CITY: "Islamabad"
-          # This is the new recipient you provided
           EMAIL_RECIPIENT: "adspk243@gmail.com"
         run: python weather_email.py
