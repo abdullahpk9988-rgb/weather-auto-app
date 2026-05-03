@@ -16,14 +16,13 @@ def get_weather(city, api_key):
     }
 
 def get_ai_advice(weather, gemini_key):
-    # Connecting using the NEW supported Google GenAI library
     client = genai.Client(api_key=gemini_key)
     
     prompt = f"The weather in {weather['city']} today is {weather['temperature']}°C with {weather['description']}. Act as a smart, highly efficient weather agent. Give me a sharp, accurate recommendation on what to wear and how to prepare for the day ahead. Keep it to two concise sentences."
     
-    # Using the latest supported model
+    # Switched back to the free-tier friendly 1.5 model
     response = client.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-1.5-flash',
         contents=prompt
     )
     return response.text
@@ -53,7 +52,6 @@ Condition: {weather['description'].title()}
         server.send_message(msg)
 
 def main():
-    # Pulling your secret passwords directly from GitHub Actions
     email = os.environ["EMAIL_ADDRESS"]
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
