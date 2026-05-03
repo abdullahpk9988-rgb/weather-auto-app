@@ -2,8 +2,7 @@ name: Daily Weather Email
 
 on:
   schedule:
-    # 3:50 AM PKT (22:50 UTC)
-    # Calculated based on your current 3h 10m delay to hit 7:00 AM
+    # 3:50 AM PKT (22:50 UTC) to account for GitHub's delay and hit 7:00 AM
     - cron: '50 22 * * *'
   workflow_dispatch: 
 
@@ -29,6 +28,7 @@ jobs:
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           WEATHER_CITY: "Islamabad"
           EMAIL_RECIPIENT: "adspk243@gmail.com"
         run: python weather_email.py
