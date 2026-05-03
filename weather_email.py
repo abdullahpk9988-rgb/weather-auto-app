@@ -100,7 +100,7 @@ def main():
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
     groq_key = os.environ["GROQ_API_KEY"]
-    recipient = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
+    recipient = os.environ.get("EMAIL_RECIPIENT", "Abdullahpk998989898@gmail.com")
     
     city = "Islamabad"
     
