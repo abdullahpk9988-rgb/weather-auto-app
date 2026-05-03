@@ -2,7 +2,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 import requests
-import google.generativeai as genai
+from google import genai
 
 def get_weather(city, api_key):
     url = "https://api.openweathermap.org/data/2.5/weather"
@@ -16,13 +16,16 @@ def get_weather(city, api_key):
     }
 
 def get_ai_advice(weather, gemini_key):
-    # Back to the stable library
-    genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Using the new, supported library
+    client = genai.Client(api_key=gemini_key)
     
     prompt = f"The weather in {weather['city']} today is {weather['temperature']}°C with {weather['description']}. Act as a smart, highly efficient weather agent. Give me a sharp, accurate recommendation on what to wear and how to prepare for the day ahead. Keep it to two concise sentences."
     
-    response = model.generate_content(prompt)
+    # Using the live, free 2.5 model
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt
+    )
     return response.text
 
 def send_email(sender_email, sender_password, weather, advice):
