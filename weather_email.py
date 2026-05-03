@@ -20,9 +20,9 @@ def get_ai_advice(weather, gemini_key):
     
     prompt = f"The weather in {weather['city']} today is {weather['temperature']}°C with {weather['description']}. Act as a smart, highly efficient weather agent. Give me a sharp, accurate recommendation on what to wear and how to prepare for the day ahead. Keep it to two concise sentences."
     
-    # Switched back to the free-tier friendly 1.5 model
+    # The actual, living free-tier model for 2026
     response = client.models.generate_content(
-        model='gemini-1.5-flash',
+        model='gemini-2.5-flash',
         contents=prompt
     )
     return response.text
