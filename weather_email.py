@@ -16,11 +16,9 @@ def get_weather(city, api_key):
     }
 
 def get_ai_advice(weather, gemini_key):
-    # This connects the script to my AI brain
     genai.configure(api_key=gemini_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    # Updated prompt: Smart Weather Agent
     prompt = f"The weather in {weather['city']} today is {weather['temperature']}°C with {weather['description']}. Act as a smart, highly efficient weather agent. Give me a sharp, accurate recommendation on what to wear and how to prepare for the day ahead. Keep it to two concise sentences."
     
     response = model.generate_content(prompt)
@@ -51,13 +49,12 @@ Condition: {weather['description'].title()}
         server.send_message(msg)
 
 def main():
-    # Pulling your secret passwords from GitHub
+    # Pulling your secret passwords directly from GitHub Actions
     email = os.environ["EMAIL_ADDRESS"]
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
     gemini_key = os.environ["GEMINI_API_KEY"]
     
-    # Run the steps
     weather_data = get_weather("Islamabad", weather_key)
     daily_advice = get_ai_advice(weather_data, gemini_key)
     send_email(email, password, weather_data, daily_advice)
