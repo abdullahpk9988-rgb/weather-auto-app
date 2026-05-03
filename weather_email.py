@@ -6,7 +6,6 @@ from openai import OpenAI
 from datetime import datetime
 
 def get_weather(city, api_key):
-    # Get current weather, sunrise, sunset
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {"q": city, "appid": api_key, "units": "metric"}
     current = requests.get(url, params=params).json()
@@ -15,25 +14,33 @@ def get_weather(city, api_key):
     forecast_url = "https://api.openweathermap.org/data/2.5/forecast"
     forecast = requests.get(forecast_url, params=params).json()
     
-    # Extract data
     rain_prob = int(forecast['list'][0]['pop'] * 100) # Convert to percentage
-    sunrise = datetime.fromtimestamp(current['sys']['sunrise']).strftime('%I:%M %p')
-    sunset = datetime.fromtimestamp(current['sys']['sunset']).strftime('%I:%M %p')
     
     return {
         "city": current["name"],
         "temperature": current["main"]["temp"],
         "description": current["weather"][0]["description"],
-        "rain_probability": rain_prob,
-        "sunrise": sunrise,
-        "sunset": sunset
+        "rain_probability": rain_prob
     }
 
 def get_namaz_times(city):
     # Free API for Namaz times
     url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Pakistan&method=1"
     response = requests.get(url).json()
-    return response['data']['timings']
+    timings = response['data']['timings']
+    
+    # FORCING 12-HOUR FORMAT: Convert the API's 24-hour time to perfect 12-hour AM/PM
+    for key, value in timings.items():
+        # The API sometimes adds "(PKT)", so we split and grab just the time
+        clean_time = value.split(" ")[0] 
+        try:
+            time_obj = datetime.strptime(clean_time, "%H:%M")
+            # This converts it to "3:45 PM" and removes any weird leading zeros
+            timings[key] = time_obj.strftime("%I:%M %p").lstrip("0")
+        except Exception:
+            pass # If it fails, just keep the original text
+            
+    return timings
 
 def get_groq_advice(weather, namaz, groq_key):
     client = OpenAI(
@@ -48,20 +55,20 @@ def get_groq_advice(weather, namaz, groq_key):
     Current Temp: {weather['temperature']}°C
     Condition: {weather['description']}
     Rain Probability: {weather['rain_probability']}%
-    Sunrise: {weather['sunrise']}
-    Sunset: {weather['sunset']}
     
-    Namaz Times Today:
+    Namaz Times & Sun Schedule Today:
+    Sunrise: {namaz['Sunrise']}
     Fajr: {namaz['Fajr']}
     Dhuhr: {namaz['Dhuhr']}
     Asr: {namaz['Asr']}
+    Sunset: {namaz['Sunset']}
     Maghrib: {namaz['Maghrib']}
     Isha: {namaz['Isha']}
     
     Please format the email clearly with these sections:
     1. A quick summary of the day's weather (predict how the morning, afternoon, and night will feel).
     2. Specific clothing and preparation advice for the day (e.g., if rain probability is high, mention an umbrella).
-    3. A clean, easy-to-read schedule of the Namaz times alongside the Sunrise/Sunset times.
+    3. A clean, easy-to-read schedule of the Namaz times alongside the Sunrise/Sunset times. The times provided above are already in perfect 12-hour AM/PM format—do not change them, just print them exactly as they are.
     4. A short, motivating closing thought.
     """
     
@@ -77,7 +84,6 @@ def send_email(sender_email, sender_password, recipient_email, advice):
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = sender_email
-    # Fixed: Now sending directly to your target email
     msg["To"] = recipient_email 
     msg.set_content(advice)
 
@@ -91,7 +97,6 @@ def main():
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
     groq_key = os.environ["GROQ_API_KEY"]
-    # Pulling the recipient from your workflow file
     recipient = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
     
     city = "Islamabad"
