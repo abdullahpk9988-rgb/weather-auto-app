@@ -2,7 +2,6 @@ import os
 import smtplib
 from email.message import EmailMessage
 import requests
-from google import genai
 
 def get_weather(city, api_key):
     url = "https://api.openweathermap.org/data/2.5/weather"
@@ -13,20 +12,29 @@ def get_weather(city, api_key):
         "city": response["name"],
         "temperature": response["main"]["temp"],
         "description": response["weather"][0]["description"],
+        "humidity": response["main"]["humidity"],
+        "wind_speed": response["wind"]["speed"],
     }
 
-def get_ai_advice(weather, gemini_key):
-    # Using the new, supported library
-    client = genai.Client(api_key=gemini_key)
+def smart_agent_advice(weather):
+    """Local, foolproof logic to tell you what to wear without an API key."""
+    temp = weather["temperature"]
+    description = weather["description"].lower()
+
+    advice = ""
+    if temp >= 30:
+        advice = "It's hot today. Wear light, breathable clothes and stay hydrated."
+    elif temp >= 20:
+        advice = "The weather is pleasant. Normal, comfortable clothing is perfect."
+    elif temp >= 10:
+        advice = "It's a bit cool. Grab a light jacket or hoodie before heading out."
+    else:
+        advice = "It's cold. Wear warm layers and a good jacket."
+
+    if "rain" in description or "shower" in description:
+        advice += " Also, take an umbrella—it looks like rain."
     
-    prompt = f"The weather in {weather['city']} today is {weather['temperature']}°C with {weather['description']}. Act as a smart, highly efficient weather agent. Give me a sharp, accurate recommendation on what to wear and how to prepare for the day ahead. Keep it to two concise sentences."
-    
-    # Using the live, free 2.5 model
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt
-    )
-    return response.text
+    return advice
 
 def send_email(sender_email, sender_password, weather, advice):
     subject = "🌤️ Your Daily Weather & Style Guide"
@@ -56,10 +64,9 @@ def main():
     email = os.environ["EMAIL_ADDRESS"]
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
-    gemini_key = os.environ["GEMINI_API_KEY"]
     
     weather_data = get_weather("Islamabad", weather_key)
-    daily_advice = get_ai_advice(weather_data, gemini_key)
+    daily_advice = smart_agent_advice(weather_data)
     send_email(email, password, weather_data, daily_advice)
 
 if __name__ == "__main__":
