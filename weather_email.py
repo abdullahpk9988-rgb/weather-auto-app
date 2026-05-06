@@ -1,4 +1,3 @@
-
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -45,20 +44,23 @@ def get_namaz_times(city):
 def get_groq_advice(weather, namaz, groq_key):
     client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
     
+    # FIX: Updated prompt to force the AI to use a strict '###' divider
     prompt = f"""
     You are a friendly morning weather assistant for {weather['city']}, Pakistan.
-    Write ONLY these 3 sections, nothing else. Be concise (2-3 sentences each max).
+    Write ONLY these 3 sections. Be concise (2-3 sentences each max).
 
-    WEATHER SUMMARY:
-    Write an engaging summary of how today will feel based on {weather['temperature']}C, {weather['description']}, {weather['humidity']}% humidity.
+    1. Weather Summary based on {weather['temperature']}C, {weather['description']}, {weather['humidity']}% humidity.
+    2. What to Wear based on {weather['rain_probability']}% rain chance.
+    3. Daily Motivation
 
-    WHAT TO WEAR:
-    Give specific outfit and prep advice based on the weather and {weather['rain_probability']}% rain chance.
-
-    DAILY MOTIVATION:
-    One short uplifting sentence to start the day.
-
-    Do NOT use markdown, headers, or bullet points. Just plain paragraph text for each section.
+    CRITICAL INSTRUCTION: You must separate each section using exactly three pound signs (###). Do NOT include section titles or headers. Just the text.
+    
+    Example format:
+    Today is sunny and warm...
+    ###
+    Wear a light t-shirt...
+    ###
+    Go out there and crush it!
     """
     
     response = client.chat.completions.create(
@@ -70,11 +72,11 @@ def get_groq_advice(weather, namaz, groq_key):
 def build_html_email(weather, namaz, advice):
     today = datetime.now().strftime("%A, %B %d %Y")
     
-    # Parse advice sections
-    lines = [l.strip() for l in advice.strip().split('\n') if l.strip()]
-    summary = lines[0] if len(lines) > 0 else ""
-    outfit = lines[1] if len(lines) > 1 else ""
-    motivation = lines[-1] if len(lines) > 2 else ""
+    # FIX: Parse advice sections safely using the ### delimiter so newlines don't break it
+    sections = [s.strip() for s in advice.split('###')]
+    summary = sections[0] if len(sections) > 0 else "Enjoy the weather today!"
+    outfit = sections[1] if len(sections) > 1 else "Dress comfortably."
+    motivation = sections[2] if len(sections) > 2 else "Have a great day!"
 
     # Weather icon based on description
     desc = weather['description'].lower()
@@ -416,7 +418,7 @@ def main():
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
     groq_key = os.environ["GROQ_API_KEY"]
-    recipient = os.environ.get("EMAIL_RECIPIENT", "abdullahpk998989898@gmail.com")
+    recipient = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
     
     city = "Islamabad"
     
@@ -428,5 +430,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
