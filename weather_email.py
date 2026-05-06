@@ -5,13 +5,13 @@ import requests
 from openai import OpenAI
 from datetime import datetime
 
+SIGNATURE = "\n\n---\n✨ Made & Designed by Abdullah\n"
+
 def get_weather(city, api_key):
-    # Current weather, humidity, etc.
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {"q": city, "appid": api_key, "units": "metric"}
     current = requests.get(url, params=params).json()
     
-    # Forecast for rain probability
     forecast_url = "https://api.openweathermap.org/data/2.5/forecast"
     forecast = requests.get(forecast_url, params=params).json()
     
@@ -26,14 +26,12 @@ def get_weather(city, api_key):
     }
 
 def get_namaz_times(city):
-    # Free API for Namaz times
     url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Pakistan&method=1"
     response = requests.get(url).json()
     timings = response['data']['timings']
     
-    # Convert the API's 24-hour time to perfect 12-hour AM/PM
     for key, value in timings.items():
-        clean_time = value.split(" ")[0] 
+        clean_time = value.split(" ")[0]
         try:
             time_obj = datetime.strptime(clean_time, "%H:%M")
             timings[key] = time_obj.strftime("%I:%M %p").lstrip("0")
@@ -48,7 +46,6 @@ def get_groq_advice(weather, namaz, groq_key):
         base_url="https://api.groq.com/openai/v1"
     )
     
-    # The Premium Weather App Prompt
     prompt = f"""
     You are a friendly, highly intelligent morning weather assistant. Write a daily briefing for the user based on this data for {weather['city']}. 
     Make it highly visual, engaging, and user-friendly by using emojis. It should feel like reading a premium weather app.
@@ -84,11 +81,14 @@ def get_groq_advice(weather, namaz, groq_key):
 def send_email(sender_email, sender_password, recipient_email, advice):
     subject = "📱 Your Daily Weather & Schedule App"
     
+    # Add signature to weather email
+    full_content = advice + SIGNATURE
+    
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = sender_email
-    msg["To"] = recipient_email 
-    msg.set_content(advice)
+    msg["To"] = recipient_email
+    msg.set_content(full_content)
 
     with smtplib.SMTP("smtp.gmail.com", 587) as server:
         server.starttls()
@@ -100,7 +100,7 @@ def main():
     password = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
     groq_key = os.environ["GROQ_API_KEY"]
-    recipient = os.environ.get("EMAIL_RECIPIENT", "abdullahpk998989898@gmail.com")
+    recipient = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
     
     city = "Islamabad"
     
