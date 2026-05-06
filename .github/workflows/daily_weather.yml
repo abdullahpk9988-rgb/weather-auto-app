@@ -29,5 +29,5 @@ jobs:
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           WEATHER_CITY: "Islamabad"
-          EMAIL_RECIPIENT: "adspk243@gmail.com"
+          EMAIL_RECIPIENT: "abdullahpk998989898@gmail.com"
         run: python weather_email.py
