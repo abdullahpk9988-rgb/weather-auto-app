@@ -249,4 +249,405 @@ body {{
   font-size: 14px;
   color: #6a5a3a;
   margin-top: 4px;
-  fo
+  font-weight: 300;
+  letter-spacing: 0.04em;
+}}
+.temp-feels {{
+  font-size: 12px;
+  color: #3a3020;
+  margin-top: 3px;
+}}
+
+/* ── GOLD DIVIDER ── */
+.gold-rule {{
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200,150,60,0.4) 30%, rgba(200,150,60,0.4) 70%, transparent);
+  margin: 0 36px;
+}}
+
+/* ── STATS BAR ── */
+.stats-bar {{
+  display: flex;
+  margin: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}}
+.stat {{
+  flex: 1;
+  text-align: center;
+  padding: 18px 8px;
+  border-right: 1px solid rgba(255,255,255,0.04);
+  position: relative;
+}}
+.stat:last-child {{ border-right: none; }}
+.stat-icon {{ font-size: 18px; display: block; margin-bottom: 6px; }}
+.stat-val {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #e8dcc8;
+  letter-spacing: -0.5px;
+}}
+.stat-lbl {{
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #2a2518;
+  margin-top: 3px;
+  font-weight: 500;
+}}
+
+/* ── CONTENT SECTIONS ── */
+.sections {{ padding: 8px 0; }}
+
+.sec {{
+  padding: 24px 36px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}}
+.sec:last-child {{ border-bottom: none; }}
+
+.sec-left {{
+  flex-shrink: 0;
+  width: 36px;
+  text-align: center;
+  padding-top: 2px;
+}}
+.sec-num {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c8963c;
+  letter-spacing: 0.1em;
+  display: block;
+  margin-top: 6px;
+}}
+.sec-icon {{ font-size: 22px; display: block; }}
+
+.sec-right {{ flex: 1; }}
+.sec-label {{
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #3a3020;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: block;
+}}
+.sec-body {{
+  font-size: 15px;
+  line-height: 1.75;
+  color: #b8a888;
+  font-weight: 300;
+}}
+
+/* ── NAMAZ GRID ── */
+.namaz-grid {{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 2px;
+}}
+.namaz-cell {{
+  background: rgba(200,150,60,0.04);
+  border: 1px solid rgba(200,150,60,0.1);
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}}
+.namaz-emoji {{ font-size: 16px; display: block; margin-bottom: 5px; }}
+.namaz-name {{
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #4a3a20;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+}}
+.namaz-time {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #c8963c;
+  letter-spacing: -0.2px;
+}}
+
+/* ── MOTIVATION ── */
+.motivation-wrap {{
+  margin: 4px 36px 28px;
+  background: linear-gradient(135deg, rgba(200,150,60,0.06), rgba(200,150,60,0.02));
+  border: 1px solid rgba(200,150,60,0.15);
+  border-radius: 18px;
+  padding: 28px 30px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}}
+.motivation-wrap::before {{
+  content: '\u201C';
+  position: absolute;
+  top: -10px; left: 16px;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 80px;
+  color: rgba(200,150,60,0.08);
+  line-height: 1;
+  pointer-events: none;
+}}
+.motivation-text {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 20px;
+  font-weight: 400;
+  font-style: italic;
+  color: #c8963c;
+  line-height: 1.55;
+  position: relative;
+  z-index: 1;
+}}
+
+/* ── REPLY BUTTON ── */
+.reply-wrap {{
+  padding: 4px 36px 28px;
+  text-align: center;
+}}
+.reply-btn {{
+  display: inline-block;
+  background: linear-gradient(135deg, #c8963c, #e8b84a);
+  color: #0a0806 !important;
+  text-decoration: none !important;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 14px 36px;
+  border-radius: 99px;
+  box-shadow: 0 8px 32px rgba(200,150,60,0.25), 0 2px 8px rgba(200,150,60,0.15);
+}}
+.reply-hint {{
+  font-size: 11px;
+  color: #2a2518;
+  margin-top: 10px;
+  letter-spacing: 0.04em;
+  font-weight: 400;
+}}
+
+/* ── FOOTER ── */
+.footer {{
+  padding: 18px 36px 22px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}}
+.footer-left {{
+  font-size: 10.5px;
+  color: #1e1810;
+  letter-spacing: 0.08em;
+  font-family: 'Courier New', monospace;
+}}
+.footer-right {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a3020;
+  letter-spacing: 0.06em;
+}}
+.footer-right span {{ color: #c8963c; }}
+
+/* ── BOTTOM ── */
+.bottom {{
+  text-align: center;
+  margin-top: 20px;
+  font-size: 10px;
+  color: #18140c;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="topbar-brand">Daily Briefing</span>
+    <span class="topbar-date">{today_short}</span>
+  </div>
+
+  <div class="card">
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-noise"></div>
+      <div class="hero-glow-top"></div>
+      <div class="hero-glow-side"></div>
+      <div class="hero-content">
+        <div class="hero-left">
+          <div class="hero-eyebrow">
+            <div class="eyebrow-dot"></div>
+            <span class="eyebrow-text">{today_full}</span>
+          </div>
+          <div class="hero-city">{weather['city']}</div>
+          <div class="hero-country">Islamic Republic of Pakistan</div>
+        </div>
+        <div class="hero-right">
+          <span class="weather-icon-hero">{weather_icon}</span>
+          <div class="temp-big">{weather['temperature']}<span class="temp-deg">°</span></div>
+          <div class="temp-desc">{weather['description']}</div>
+          <div class="temp-feels">Feels like {weather['feels_like']}°C</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GOLD RULE -->
+    <div class="gold-rule"></div>
+
+    <!-- STATS -->
+    <div class="stats-bar">
+      <div class="stat">
+        <span class="stat-icon">💧</span>
+        <div class="stat-val">{weather['humidity']}%</div>
+        <div class="stat-lbl">Humidity</div>
+      </div>
+      <div class="stat">
+        <span class="stat-icon">🌂</span>
+        <div class="stat-val">{weather['rain_probability']}%</div>
+        <div class="stat-lbl">Rain</div>
+      </div>
+      <div class="stat">
+        <span class="stat-icon">💨</span>
+        <div class="stat-val">{weather['wind_speed']} m/s</div>
+        <div class="stat-lbl">Wind</div>
+      </div>
+    </div>
+
+    <!-- SECTIONS -->
+    <div class="sections">
+
+      <div class="sec">
+        <div class="sec-left">
+          <span class="sec-icon">🌤️</span>
+          <span class="sec-num">01</span>
+        </div>
+        <div class="sec-right">
+          <span class="sec-label">Weather Summary</span>
+          <div class="sec-body">{summary}</div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-left">
+          <span class="sec-icon">👕</span>
+          <span class="sec-num">02</span>
+        </div>
+        <div class="sec-right">
+          <span class="sec-label">What to Wear &amp; Prep</span>
+          <div class="sec-body">{outfit}</div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-left">
+          <span class="sec-icon">🕌</span>
+          <span class="sec-num">03</span>
+        </div>
+        <div class="sec-right">
+          <span class="sec-label">Prayer &amp; Sun Schedule</span>
+          <div class="namaz-grid">
+            <div class="namaz-cell">
+              <span class="namaz-emoji">🌅</span>
+              <span class="namaz-name">Fajr</span>
+              <span class="namaz-time">{namaz['Fajr']}</span>
+            </div>
+            <div class="namaz-cell">
+              <span class="namaz-emoji">☀️</span>
+              <span class="namaz-name">Sunrise</span>
+              <span class="namaz-time">{namaz['Sunrise']}</span>
+            </div>
+            <div class="namaz-cell">
+              <span class="namaz-emoji">🌞</span>
+              <span class="namaz-name">Dhuhr</span>
+              <span class="namaz-time">{namaz['Dhuhr']}</span>
+            </div>
+            <div class="namaz-cell">
+              <span class="namaz-emoji">🌇</span>
+              <span class="namaz-name">Asr</span>
+              <span class="namaz-time">{namaz['Asr']}</span>
+            </div>
+            <div class="namaz-cell">
+              <span class="namaz-emoji">🌆</span>
+              <span class="namaz-name">Maghrib</span>
+              <span class="namaz-time">{namaz['Maghrib']}</span>
+            </div>
+            <div class="namaz-cell">
+              <span class="namaz-emoji">🌙</span>
+              <span class="namaz-name">Isha</span>
+              <span class="namaz-time">{namaz['Isha']}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- MOTIVATION -->
+    <div class="motivation-wrap">
+      <div class="motivation-text">{motivation}</div>
+    </div>
+
+    <!-- REPLY BUTTON -->
+    <div class="reply-wrap">
+      <a href="{mailto_link}" class="reply-btn">💬 &nbsp; Ask a Question</a>
+      <div class="reply-hint">Have a question about today's weather? Just hit reply — AI answers instantly.</div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <div class="footer-left">auto-delivered · islamabad · pkT</div>
+      <div class="footer-right">by <span>Abdullah Adnan</span></div>
+    </div>
+
+  </div>
+
+  <div class="bottom">Powered by Groq &amp; OpenWeather · Built by Abdullah</div>
+
+</div>
+</body>
+</html>"""
+    return html
+
+def send_email(sender_email, sender_password, recipient_email, weather, namaz, advice):
+    subject = "🌤️ Your Daily Weather & Schedule — Islamabad"
+    
+    html_content = build_html_email(weather, namaz, advice, sender_email)
+    
+    msg = MIMEMultipart('alternative')
+    msg["Subject"] = subject
+    msg["From"]    = sender_email
+    msg["To"]      = recipient_email
+    
+    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+
+def main():
+    email       = os.environ["EMAIL_ADDRESS"]
+    password    = os.environ["EMAIL_PASSWORD"]
+    weather_key = os.environ["WEATHER_API_KEY"]
+    groq_key    = os.environ["GROQ_API_KEY"]
+    recipient   = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
+    
+    city = "Islamabad"
+    
+    weather_data = get_weather(city, weather_key)
+    namaz_data   = get_namaz_times(city)
+    daily_advice = get_groq_advice(weather_data, namaz_data, groq_key)
+    
+    send_email(email, password, recipient, weather_data, namaz_data, daily_advice)
+
+if __name__ == "__main__":
+    main()
