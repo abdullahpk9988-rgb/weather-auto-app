@@ -44,16 +44,15 @@ def get_namaz_times(city):
 def get_groq_advice(weather, namaz, groq_key):
     client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
     
-    # FIX: Updated prompt to force the AI to use a strict '###' divider
     prompt = f"""
     You are a friendly morning weather assistant for {weather['city']}, Pakistan.
     Write ONLY these 3 sections. Be concise (2-3 sentences each max).
 
     1. Weather Summary based on {weather['temperature']}C, {weather['description']}, {weather['humidity']}% humidity.
     2. What to Wear based on {weather['rain_probability']}% rain chance.
-    3. Daily Motivation
+    3. Daily Motivation — one powerful, uplifting sentence.
 
-    CRITICAL INSTRUCTION: You must separate each section using exactly three pound signs (###). Do NOT include section titles or headers. Just the text.
+    CRITICAL INSTRUCTION: Separate each section using exactly three pound signs (###). No section titles. Just the text.
     
     Example format:
     Today is sunny and warm...
@@ -69,364 +68,185 @@ def get_groq_advice(weather, namaz, groq_key):
     )
     return response.choices[0].message.content
 
-def build_html_email(weather, namaz, advice):
-    today = datetime.now().strftime("%A, %B %d %Y")
+def build_html_email(weather, namaz, advice, sender_email):
+    today_full = datetime.now().strftime("%A, %B %d · %Y")
+    today_short = datetime.now().strftime("%d %b %Y")
     
-    # FIX: Parse advice sections safely using the ### delimiter so newlines don't break it
     sections = [s.strip() for s in advice.split('###')]
-    summary = sections[0] if len(sections) > 0 else "Enjoy the weather today!"
-    outfit = sections[1] if len(sections) > 1 else "Dress comfortably."
+    summary  = sections[0] if len(sections) > 0 else "Enjoy the weather today!"
+    outfit   = sections[1] if len(sections) > 1 else "Dress comfortably."
     motivation = sections[2] if len(sections) > 2 else "Have a great day!"
 
-    # Weather icon based on description
     desc = weather['description'].lower()
-    if 'rain' in desc: weather_icon = "🌧️"
-    elif 'cloud' in desc: weather_icon = "☁️"
-    elif 'clear' in desc: weather_icon = "☀️"
-    elif 'snow' in desc: weather_icon = "❄️"
-    elif 'storm' in desc: weather_icon = "⛈️"
-    elif 'haze' in desc or 'fog' in desc: weather_icon = "🌫️"
-    else: weather_icon = "🌤️"
+    if 'rain'              in desc: weather_icon = "🌧️"; icon_bg = "#0f2a3f"
+    elif 'thunder'         in desc: weather_icon = "⛈️"; icon_bg = "#1a1a0f"
+    elif 'cloud'           in desc: weather_icon = "☁️"; icon_bg = "#1a1a2e"
+    elif 'clear'           in desc: weather_icon = "☀️"; icon_bg = "#2a1f00"
+    elif 'snow'            in desc: weather_icon = "❄️"; icon_bg = "#0f1f2a"
+    elif 'haze' in desc or 'fog' in desc: weather_icon = "🌫️"; icon_bg = "#1a1a1a"
+    else:                            weather_icon = "🌤️"; icon_bg = "#1a2a1a"
 
-    html = f"""
-<!DOCTYPE html>
+    mailto_link = f"mailto:{sender_email}?subject=Re%3A%20Your%20Daily%20Weather%20%26%20Schedule%20App"
+
+    html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500&display=swap');
-  
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  
-  body {{
-    background: #0f0f1a;
-    font-family: 'DM Sans', sans-serif;
-    color: #e8e8f0;
-    padding: 20px;
-  }}
-  
-  .wrapper {{
-    max-width: 600px;
-    margin: 0 auto;
-    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-    border-radius: 24px;
-    overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.08);
-  }}
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600&display=swap');
 
-  /* HEADER */
-  .header {{
-    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-    padding: 40px 36px 32px;
-    text-align: center;
-    position: relative;
-  }}
-  .header::after {{
-    content: '';
-    position: absolute;
-    bottom: -1px; left: 0; right: 0;
-    height: 40px;
-    background: #1a1a2e;
-    clip-path: ellipse(55% 100% at 50% 100%);
-  }}
-  .date-badge {{
-    display: inline-block;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 20px;
-    padding: 6px 16px;
-    font-size: 12px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-bottom: 20px;
-    color: #a8c4e8;
-  }}
-  .city-name {{
-    font-family: 'Playfair Display', serif;
-    font-size: 36px;
-    font-weight: 700;
-    color: #ffffff;
-    margin-bottom: 6px;
-    letter-spacing: -0.5px;
-  }}
-  .country {{
-    font-size: 13px;
-    color: #7eadd4;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }}
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
-  /* TEMP HERO */
-  .temp-hero {{
-    text-align: center;
-    padding: 40px 36px 20px;
-  }}
-  .weather-icon {{
-    font-size: 64px;
-    line-height: 1;
-    margin-bottom: 12px;
-    display: block;
-  }}
-  .temp-display {{
-    font-family: 'Playfair Display', serif;
-    font-size: 80px;
-    font-weight: 700;
-    color: #ffffff;
-    line-height: 1;
-    letter-spacing: -3px;
-  }}
-  .temp-unit {{
-    font-size: 36px;
-    color: #7eadd4;
-    vertical-align: super;
-  }}
-  .weather-desc {{
-    font-size: 18px;
-    color: #a8c4e8;
-    margin-top: 8px;
-    font-weight: 300;
-    letter-spacing: 0.5px;
-  }}
-  .feels-like {{
-    font-size: 13px;
-    color: #6a8aaa;
-    margin-top: 6px;
-  }}
+body {{
+  background: #06060a;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: 32px 12px 64px;
+}}
 
-  /* STATS ROW */
-  .stats-row {{
-    display: flex;
-    margin: 24px 36px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 16px;
-    overflow: hidden;
-  }}
-  .stat {{
-    flex: 1;
-    text-align: center;
-    padding: 16px 8px;
-    border-right: 1px solid rgba(255,255,255,0.06);
-  }}
-  .stat:last-child {{ border-right: none; }}
-  .stat-icon {{ font-size: 20px; display: block; margin-bottom: 6px; }}
-  .stat-value {{ font-size: 18px; font-weight: 500; color: #ffffff; }}
-  .stat-label {{ font-size: 11px; color: #5a7a9a; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }}
+.wrap {{ max-width: 600px; margin: 0 auto; }}
 
-  /* SECTIONS */
-  .section {{
-    margin: 0 36px 24px;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 16px;
-    padding: 24px;
-  }}
-  .section-header {{
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
-  }}
-  .section-icon {{ font-size: 20px; }}
-  .section-title {{
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #5a7a9a;
-    font-weight: 500;
-  }}
-  .section-body {{
-    font-size: 15px;
-    line-height: 1.7;
-    color: #c8d8e8;
-    font-weight: 300;
-  }}
+/* ── TOP BAR ── */
+.topbar {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 0 4px;
+}}
+.topbar-brand {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c8963c;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}}
+.topbar-date {{
+  font-size: 11px;
+  color: #2a2a3a;
+  letter-spacing: 0.08em;
+  font-weight: 400;
+}}
 
-  /* NAMAZ GRID */
-  .namaz-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 4px;
-  }}
-  .namaz-item {{
-    background: rgba(255,255,255,0.04);
-    border-radius: 10px;
-    padding: 12px 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }}
-  .namaz-name {{
-    font-size: 13px;
-    color: #7eadd4;
-    font-weight: 500;
-  }}
-  .namaz-time {{
-    font-size: 13px;
-    color: #ffffff;
-    font-weight: 400;
-  }}
+/* ── MAIN CARD ── */
+.card {{
+  background: #0c0c12;
+  border-radius: 24px;
+  border: 1px solid rgba(200,150,60,0.12);
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.03),
+    0 32px 64px rgba(0,0,0,0.7),
+    0 0 80px rgba(200,150,60,0.04);
+}}
 
-  /* MOTIVATION */
-  .motivation {{
-    margin: 0 36px 24px;
-    background: linear-gradient(135deg, rgba(30,60,114,0.5), rgba(42,82,152,0.3));
-    border: 1px solid rgba(126,173,212,0.2);
-    border-radius: 16px;
-    padding: 24px;
-    text-align: center;
-  }}
-  .motivation-text {{
-    font-family: 'Playfair Display', serif;
-    font-size: 17px;
-    color: #a8c4e8;
-    line-height: 1.6;
-    font-style: italic;
-  }}
-
-  /* FOOTER */
-  .footer {{
-    text-align: center;
-    padding: 20px 36px 32px;
-    border-top: 1px solid rgba(255,255,255,0.05);
-  }}
-  .footer-text {{
-    font-size: 12px;
-    color: #3a5a7a;
-    letter-spacing: 0.5px;
-  }}
-  .footer-brand {{
-    font-size: 13px;
-    color: #5a7a9a;
-    margin-top: 6px;
-    font-weight: 500;
-  }}
-</style>
-</head>
-<body>
-<div class="wrapper">
-
-  <!-- HEADER -->
-  <div class="header">
-    <div class="date-badge">{today}</div>
-    <div class="city-name">{weather['city']}</div>
-    <div class="country">Pakistan &nbsp;|&nbsp; Daily Briefing</div>
-  </div>
-
-  <!-- TEMP HERO -->
-  <div class="temp-hero">
-    <span class="weather-icon">{weather_icon}</span>
-    <div>
-      <span class="temp-display">{weather['temperature']}<span class="temp-unit">°C</span></span>
-    </div>
-    <div class="weather-desc">{weather['description']}</div>
-    <div class="feels-like">Feels like {weather['feels_like']}°C</div>
-  </div>
-
-  <!-- STATS ROW -->
-  <div class="stats-row">
-    <div class="stat">
-      <span class="stat-icon">💧</span>
-      <div class="stat-value">{weather['humidity']}%</div>
-      <div class="stat-label">Humidity</div>
-    </div>
-    <div class="stat">
-      <span class="stat-icon">🌂</span>
-      <div class="stat-value">{weather['rain_probability']}%</div>
-      <div class="stat-label">Rain</div>
-    </div>
-    <div class="stat">
-      <span class="stat-icon">💨</span>
-      <div class="stat-value">{weather['wind_speed']} m/s</div>
-      <div class="stat-label">Wind</div>
-    </div>
-  </div>
-
-  <!-- WEATHER SUMMARY -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-icon">🌤️</span>
-      <span class="section-title">Weather Summary</span>
-    </div>
-    <div class="section-body">{summary}</div>
-  </div>
-
-  <!-- WHAT TO WEAR -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-icon">👕</span>
-      <span class="section-title">What to Wear & Prep</span>
-    </div>
-    <div class="section-body">{outfit}</div>
-  </div>
-
-  <!-- NAMAZ TIMES -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-icon">🕌</span>
-      <span class="section-title">Prayer & Sun Schedule</span>
-    </div>
-    <div class="namaz-grid">
-      <div class="namaz-item"><span class="namaz-name">🌅 Fajr</span><span class="namaz-time">{namaz['Fajr']}</span></div>
-      <div class="namaz-item"><span class="namaz-name">☀️ Sunrise</span><span class="namaz-time">{namaz['Sunrise']}</span></div>
-      <div class="namaz-item"><span class="namaz-name">🌞 Dhuhr</span><span class="namaz-time">{namaz['Dhuhr']}</span></div>
-      <div class="namaz-item"><span class="namaz-name">🌇 Asr</span><span class="namaz-time">{namaz['Asr']}</span></div>
-      <div class="namaz-item"><span class="namaz-name">🌆 Maghrib</span><span class="namaz-time">{namaz['Maghrib']}</span></div>
-      <div class="namaz-item"><span class="namaz-name">🌙 Isha</span><span class="namaz-time">{namaz['Isha']}</span></div>
-    </div>
-  </div>
-
-  <!-- MOTIVATION -->
-  <div class="motivation">
-    <div class="motivation-text">"{motivation}"</div>
-  </div>
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <div class="footer-text">Delivered fresh every morning ☕</div>
-    <div class="footer-brand">✨ Made &amp; Designed by Abdullah</div>
-  </div>
-
-</div>
-</body>
-</html>
-"""
-    return html
-
-def send_email(sender_email, sender_password, recipient_email, weather, namaz, advice):
-    subject = "📱 Your Daily Weather & Schedule App"
-    
-    html_content = build_html_email(weather, namaz, advice)
-    
-    msg = MIMEMultipart('alternative')
-    msg["Subject"] = subject
-    msg["From"] = sender_email
-    msg["To"] = recipient_email
-    
-    # Attach HTML version
-    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.send_message(msg)
-
-def main():
-    email = os.environ["EMAIL_ADDRESS"]
-    password = os.environ["EMAIL_PASSWORD"]
-    weather_key = os.environ["WEATHER_API_KEY"]
-    groq_key = os.environ["GROQ_API_KEY"]
-    recipient = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
-    
-    city = "Islamabad"
-    
-    weather_data = get_weather(city, weather_key)
-    namaz_data = get_namaz_times(city)
-    daily_advice = get_groq_advice(weather_data, namaz_data, groq_key)
-    
-    send_email(email, password, recipient, weather_data, namaz_data, daily_advice)
-
-if __name__ == "__main__":
-    main()
+/* ── HERO ── */
+.hero {{
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  min-height: 280px;
+  background: linear-gradient(160deg, #0e0e1a 0%, #12100a 50%, #0a0a0e 100%);
+}}
+.hero-noise {{
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.6;
+  pointer-events: none;
+}}
+.hero-glow-top {{
+  position: absolute;
+  top: -80px; left: 50%;
+  transform: translateX(-50%);
+  width: 400px; height: 300px;
+  background: radial-gradient(ellipse, rgba(200,150,60,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}}
+.hero-glow-side {{
+  position: absolute;
+  bottom: -40px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(200,150,60,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}}
+.hero-content {{
+  position: relative;
+  z-index: 2;
+  padding: 40px 36px 36px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}}
+.hero-left {{ flex: 1; }}
+.hero-eyebrow {{
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(200,150,60,0.08);
+  border: 1px solid rgba(200,150,60,0.18);
+  border-radius: 99px;
+  padding: 5px 13px;
+  margin-bottom: 18px;
+}}
+.eyebrow-dot {{
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: #c8963c;
+  box-shadow: 0 0 6px rgba(200,150,60,0.6);
+}}
+.eyebrow-text {{
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #c8963c;
+}}
+.hero-city {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 52px;
+  font-weight: 700;
+  color: #f5f0e8;
+  line-height: 0.95;
+  letter-spacing: -1px;
+}}
+.hero-country {{
+  font-size: 12px;
+  color: #3a3020;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-top: 10px;
+  font-weight: 500;
+}}
+.hero-right {{
+  text-align: right;
+  padding-top: 8px;
+}}
+.temp-big {{
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 88px;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1;
+  letter-spacing: -4px;
+}}
+.temp-deg {{
+  font-size: 40px;
+  color: #c8963c;
+  vertical-align: super;
+  letter-spacing: 0;
+}}
+.weather-icon-hero {{
+  font-size: 28px;
+  display: block;
+  margin-bottom: 4px;
+  text-align: right;
+}}
+.temp-desc {{
+  font-size: 14px;
+  color: #6a5a3a;
+  margin-top: 4px;
+  fo
