@@ -68,6 +68,76 @@ def get_groq_advice(weather, namaz, groq_key):
     )
     return response.choices[0].message.content
 
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import requests
+from openai import OpenAI
+from datetime import datetime
+
+def get_weather(city, api_key):
+    url = "https://api.openweathermap.org/data/2.5/weather"
+    params = {"q": city, "appid": api_key, "units": "metric"}
+    current = requests.get(url, params=params).json()
+    
+    forecast_url = "https://api.openweathermap.org/data/2.5/forecast"
+    forecast = requests.get(forecast_url, params=params).json()
+    
+    rain_prob = int(forecast['list'][0]['pop'] * 100)
+    
+    return {
+        "city": current["name"],
+        "temperature": round(current["main"]["temp"]),
+        "feels_like": round(current["main"]["feels_like"]),
+        "description": current["weather"][0]["description"].title(),
+        "humidity": current["main"]["humidity"],
+        "wind_speed": round(current["wind"]["speed"]),
+        "rain_probability": rain_prob
+    }
+
+def get_namaz_times(city):
+    url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Pakistan&method=1"
+    response = requests.get(url).json()
+    timings = response['data']['timings']
+    
+    for key, value in timings.items():
+        clean_time = value.split(" ")[0]
+        try:
+            time_obj = datetime.strptime(clean_time, "%H:%M")
+            timings[key] = time_obj.strftime("%I:%M %p").lstrip("0")
+        except Exception:
+            pass
+            
+    return timings
+
+def get_groq_advice(weather, namaz, groq_key):
+    client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
+    
+    prompt = f"""
+    You are a friendly morning weather assistant for {weather['city']}, Pakistan.
+    Write ONLY these 3 sections. Be concise (2-3 sentences each max).
+
+    1. Weather Summary based on {weather['temperature']}C, {weather['description']}, {weather['humidity']}% humidity.
+    2. What to Wear based on {weather['rain_probability']}% rain chance.
+    3. Daily Motivation — one powerful, uplifting sentence.
+
+    CRITICAL INSTRUCTION: Separate each section using exactly three pound signs (###). No section titles. Just the text.
+    
+    Example format:
+    Today is sunny and warm...
+    ###
+    Wear a light t-shirt...
+    ###
+    Go out there and crush it!
+    """
+    
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
 def build_html_email(weather, namaz, advice, sender_email):
     today_full = datetime.now().strftime("%A, %B %d · %Y")
     today_short = datetime.now().strftime("%d %b %Y")
@@ -616,6 +686,41 @@ body {{
 </body>
 </html>"""
     return html
+
+def send_email(sender_email, sender_password, recipient_email, weather, namaz, advice):
+    subject = "🌤️ Your Daily Weather & Schedule — Islamabad"
+    
+    html_content = build_html_email(weather, namaz, advice, sender_email)
+    
+    msg = MIMEMultipart('alternative')
+    msg["Subject"] = subject
+    msg["From"]    = sender_email
+    msg["To"]      = recipient_email
+    
+    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+
+def main():
+    email       = os.environ["EMAIL_ADDRESS"]
+    password    = os.environ["EMAIL_PASSWORD"]
+    weather_key = os.environ["WEATHER_API_KEY"]
+    groq_key    = os.environ["GROQ_API_KEY"]
+    recipient   = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
+    
+    city = "Islamabad"
+    
+    weather_data = get_weather(city, weather_key)
+    namaz_data   = get_namaz_times(city)
+    daily_advice = get_groq_advice(weather_data, namaz_data, groq_key)
+    
+    send_email(email, password, recipient, weather_data, namaz_data, daily_advice)
+
+if __name__ == "__main__":
+    main()
 
 def send_email(sender_email, sender_password, recipient_email, weather, namaz, advice):
     subject = "🌤️ Your Daily Weather & Schedule — Islamabad"
