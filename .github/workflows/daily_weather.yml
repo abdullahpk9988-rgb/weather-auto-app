@@ -2,8 +2,8 @@ name: Daily Weather Email
 
 on:
   schedule:
-    - cron: '50 22 * * *'
-  workflow_dispatch: 
+    - cron: '43 20 * * *'   # 1:43 AM PKT (UTC+5) → arrives ~2:00 AM PKT
+  workflow_dispatch:
 
 jobs:
   build:
