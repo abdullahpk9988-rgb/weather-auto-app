@@ -4,151 +4,169 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import requests
 from openai import OpenAI
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
+PKT = timezone(timedelta(hours=5))
 
-def get_weather_current(city, api_key):
+def get_weather(city, api_key):
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {"q": city, "appid": api_key, "units": "metric"}
-    data = requests.get(url, params=params).json()
+    current = requests.get(url, params=params).json()
+
+    forecast_url = "https://api.openweathermap.org/data/2.5/forecast"
+    forecast_data = requests.get(forecast_url, params=params).json()
+
+    rain_prob = int(forecast_data['list'][0]['pop'] * 100)
+
     return {
-        "city": data["name"],
-        "temperature": round(data["main"]["temp"]),
-        "feels_like": round(data["main"]["feels_like"]),
-        "description": data["weather"][0]["description"].title(),
-        "humidity": data["main"]["humidity"],
-        "wind_speed": round(data["wind"]["speed"]),
+        "city": current["name"],
+        "temperature": round(current["main"]["temp"]),
+        "feels_like": round(current["main"]["feels_like"]),
+        "description": current["weather"][0]["description"].title(),
+        "humidity": current["main"]["humidity"],
+        "wind_speed": round(current["wind"]["speed"]),
+        "rain_probability": rain_prob,
+        "forecast_raw": forecast_data['list']
     }
 
-
-def get_forecast_slots(city, api_key):
-    """
-    Pull 5-day/3-hour forecast and extract 8 representative slots for TODAY
-    covering the full day: early morning, morning, late morning, noon,
-    afternoon, late afternoon, evening, night.
-    """
-    url = "https://api.openweathermap.org/data/2.5/forecast"
-    params = {"q": city, "appid": api_key, "units": "metric", "cnt": 16}
-    data = requests.get(url, params=params).json()
-
+def get_forecast_slots(forecast_raw):
+    """Return up to 24 forecast slots covering today and tomorrow in PKT."""
     slots = []
-    for item in data["list"]:
-        dt = datetime.utcfromtimestamp(item["dt"])
-        # Convert UTC to PKT (UTC+5)
-        pkt_hour = (dt.hour + 5) % 24
-        pkt_label = datetime(dt.year, dt.month, dt.day, pkt_hour).strftime("%I:%M %p").lstrip("0")
+    now_pkt = datetime.now(PKT)
+    today_date = now_pkt.date()
 
-        desc = item["weather"][0]["description"].title()
-        temp = round(item["main"]["temp"])
-        feels = round(item["main"]["feels_like"])
-        rain_prob = round(item["pop"] * 100)
-        humidity = item["main"]["humidity"]
-        wind = round(item["wind"]["speed"])
+    for item in forecast_raw:
+        dt_utc = datetime.fromtimestamp(item['dt'], tz=timezone.utc)
+        dt_pkt = dt_utc.astimezone(PKT)
 
-        # Pick weather emoji
-        d = desc.lower()
-        if "thunder"    in d: icon = "⛈️"
-        elif "rain"     in d: icon = "🌧️"
-        elif "drizzle"  in d: icon = "🌦️"
-        elif "snow"     in d: icon = "❄️"
-        elif "fog"      in d or "haze" in d or "mist" in d: icon = "🌫️"
-        elif "cloud"    in d: icon = "☁️"
-        elif "clear"    in d: icon = "☀️"
-        else:                 icon = "🌤️"
+        # Include today + tomorrow to get close to 24 entries
+        if dt_pkt.date() not in (today_date, today_date + timedelta(days=1)):
+            continue
+
+        desc = item['weather'][0]['description'].lower()
+        if 'rain' in desc:      icon = "🌧️"
+        elif 'drizzle' in desc: icon = "🌦️"
+        elif 'thunder' in desc: icon = "⛈️"
+        elif 'snow' in desc:    icon = "❄️"
+        elif 'cloud' in desc:   icon = "☁️"
+        elif 'clear' in desc:   icon = "☀️"
+        elif 'haze' in desc or 'fog' in desc or 'mist' in desc: icon = "🌫️"
+        else:                   icon = "🌤️"
 
         slots.append({
-            "hour": pkt_hour,
-            "label": pkt_label,
-            "desc": desc,
-            "temp": temp,
-            "feels": feels,
-            "rain": rain_prob,
-            "humidity": humidity,
-            "wind": wind,
+            "time": dt_pkt.strftime("%I:%M %p").lstrip("0"),
+            "label": dt_pkt.strftime("%a"),          # Mon, Tue…
             "icon": icon,
+            "temp": round(item['main']['temp']),
+            "desc": item['weather'][0]['description'].title(),
+            "rain": int(item['pop'] * 100),
+            "humidity": item['main']['humidity'],
         })
 
-    # Pick up to 8 evenly spread slots
-    if len(slots) > 8:
-        step = len(slots) / 8
-        slots = [slots[round(i * step)] for i in range(8)]
+        if len(slots) >= 24:
+            break
 
     return slots
-
 
 def get_namaz_times(city):
     url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Pakistan&method=1"
     response = requests.get(url).json()
-    timings = response["data"]["timings"]
+    timings = response['data']['timings']
+
     for key, value in timings.items():
-        clean = value.split(" ")[0]
+        clean_time = value.split(" ")[0]
         try:
-            t = datetime.strptime(clean, "%H:%M")
-            timings[key] = t.strftime("%I:%M %p").lstrip("0")
+            time_obj = datetime.strptime(clean_time, "%H:%M")
+            timings[key] = time_obj.strftime("%I:%M %p").lstrip("0")
         except Exception:
             pass
+
     return timings
 
-
-def get_groq_summary(weather, slots, groq_key):
+def get_groq_advice(weather, forecast_slots, groq_key):
     client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
 
-    slot_text = "\n".join(
-        f"  {s['label']}: {s['temp']}°C, {s['desc']}, rain {s['rain']}%"
-        for s in slots
+    # Build a brief summary of how the day looks
+    day_snapshot = ", ".join(
+        f"{s['time']} {s['temp']}C {s['desc']}" for s in forecast_slots[:8]
     )
 
     prompt = f"""
-You are a concise morning weather assistant for {weather['city']}, Pakistan.
-Based on the hourly forecast below, write EXACTLY 3 sections separated by ###.
-No section titles. No markdown. 2-3 sentences each max.
+You are a friendly morning weather assistant for {weather['city']}, Pakistan.
+Write ONLY these 3 sections. Be concise (2-3 sentences each max).
 
-HOURLY FORECAST:
-{slot_text}
+1. Weather Summary — describe how the day evolves based on: {day_snapshot}
+2. What to Wear — based on {weather['rain_probability']}% rain chance and {weather['temperature']}C.
+3. Daily Motivation — one uplifting sentence.
 
-Section 1 — Overall day summary: how will the day evolve from morning to night?
-Section 2 — What to wear and prepare for: umbrella? light jacket? sunscreen?
-Section 3 — One powerful motivational sentence to start the day.
+CRITICAL: Separate each section with exactly ### on its own line. No titles, no headers.
+
+Example:
+Morning starts cool and cloudy...
+###
+Carry a light jacket...
+###
+Every sunrise is a fresh start!
 """
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content
 
+def build_forecast_rows_html(slots):
+    """Build HTML rows for all forecast slots."""
+    rows = ""
+    for i, s in enumerate(slots):
+        bg = "rgba(255,255,255,0.04)" if i % 2 == 0 else "rgba(255,255,255,0.02)"
+        rain_color = "#7eadd4" if s['rain'] < 40 else ("#f0a500" if s['rain'] < 70 else "#e05a5a")
+        rows += (
+            '<div style="display:flex;align-items:center;padding:10px 14px;'
+            f'background:{bg};border-radius:10px;margin-bottom:4px;">'
 
-def build_html_email(weather, slots, namaz, advice, sender_email):
-    today_full  = datetime.now().strftime("%A, %B %d · %Y")
-    today_short = datetime.now().strftime("%d %b %Y")
+            # Time + day label
+            f'<div style="width:90px;flex-shrink:0;">'
+            f'<div style="font-size:13px;color:#ffffff;font-weight:500;">{s["time"]}</div>'
+            f'<div style="font-size:11px;color:#5a7a9a;letter-spacing:1px;">{s["label"]}</div>'
+            f'</div>'
 
-    parts = [s.strip() for s in advice.split("###")]
-    summary    = parts[0] if len(parts) > 0 else "A great day ahead!"
-    outfit     = parts[1] if len(parts) > 1 else "Dress comfortably."
-    motivation = parts[2] if len(parts) > 2 else "Make today count."
+            # Icon
+            f'<div style="width:36px;font-size:22px;text-align:center;flex-shrink:0;">{s["icon"]}</div>'
 
-    # Hero icon from first slot
-    hero_icon  = slots[0]["icon"] if slots else "🌤️"
-    mailto_link = (
-        "mailto:" + sender_email
-        + "?subject=Re%3A%20Your%20Daily%20Weather%20%26%20Schedule%20App"
-    )
+            # Description
+            f'<div style="flex:1;font-size:13px;color:#a8c4e8;padding:0 10px;">{s["desc"]}</div>'
 
-    # Build hourly forecast rows
-    forecast_rows = ""
-    for s in slots:
-        forecast_rows += """
-        <div class="fc-row">
-          <span class="fc-time">FC_TIME</span>
-          <span class="fc-icon">FC_ICON</span>
-          <span class="fc-desc">FC_DESC</span>
-          <span class="fc-temp">FC_TEMP&deg;C</span>
-          <span class="fc-rain">FC_RAIN% rain</span>
-        </div>""".replace("FC_TIME", s["label"]) \
-                  .replace("FC_ICON", s["icon"]) \
-                  .replace("FC_DESC", s["desc"]) \
-                  .replace("FC_TEMP", str(s["temp"])) \
-                  .replace("FC_RAIN", str(s["rain"]))
+            # Temp
+            f'<div style="width:52px;text-align:right;font-size:15px;font-weight:600;color:#ffffff;flex-shrink:0;">'
+            f'{s["temp"]}°C</div>'
+
+            # Rain
+            f'<div style="width:46px;text-align:right;font-size:12px;color:{rain_color};flex-shrink:0;padding-left:8px;">'
+            f'&#x1F4A7;{s["rain"]}%</div>'
+
+            '</div>'
+        )
+    return rows
+
+def build_html_email(weather, namaz, advice, forecast_slots):
+    today = datetime.now(PKT).strftime("%A, %B %d %Y")
+
+    sections = [s.strip() for s in advice.split('###')]
+    summary    = sections[0] if len(sections) > 0 else "Enjoy the weather today!"
+    outfit     = sections[1] if len(sections) > 1 else "Dress comfortably."
+    motivation = sections[2] if len(sections) > 2 else "Have a great day!"
+
+    desc = weather['description'].lower()
+    if 'rain' in desc:       weather_icon = "&#127783;&#65039;"   # 🌧️
+    elif 'cloud' in desc:    weather_icon = "&#9925;&#65039;"      # ☁️
+    elif 'clear' in desc:    weather_icon = "&#9728;&#65039;"      # ☀️
+    elif 'snow' in desc:     weather_icon = "&#10052;&#65039;"     # ❄️
+    elif 'storm' in desc:    weather_icon = "&#9928;&#65039;"      # ⛈️
+    elif 'haze' in desc or 'fog' in desc: weather_icon = "&#127787;&#65039;"  # 🌫️
+    else:                    weather_icon = "&#127780;&#65039;"    # 🌤️
+
+    forecast_html = build_forecast_rows_html(forecast_slots)
 
     html = """<!DOCTYPE html>
 <html lang="en">
@@ -156,228 +174,183 @@ def build_html_email(weather, slots, namaz, advice, sender_email):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-body{background:#06060a;font-family:'Outfit',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;padding:32px 12px 64px;}
-.wrap{max-width:600px;margin:0 auto;}
-.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding:0 4px;}
-.topbar-brand{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:#c8963c;letter-spacing:0.12em;text-transform:uppercase;}
-.topbar-date{font-size:11px;color:#2a2a3a;letter-spacing:0.08em;}
-.card{background:#0c0c12;border-radius:24px;border:1px solid rgba(200,150,60,0.12);overflow:hidden;box-shadow:0 32px 64px rgba(0,0,0,0.7);}
-/* HERO */
-.hero{position:relative;overflow:hidden;min-height:260px;background:linear-gradient(160deg,#0e0e1a 0%,#12100a 50%,#0a0a0e 100%);}
-.hero-glow-top{position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:400px;height:300px;background:radial-gradient(ellipse,rgba(200,150,60,0.12) 0%,transparent 70%);pointer-events:none;}
-.hero-glow-side{position:absolute;bottom:-40px;right:-60px;width:200px;height:200px;background:radial-gradient(circle,rgba(200,150,60,0.06) 0%,transparent 70%);pointer-events:none;}
-.hero-content{position:relative;z-index:2;padding:36px 36px 32px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;}
-.hero-left{flex:1;}
-.hero-eyebrow{display:inline-flex;align-items:center;gap:7px;background:rgba(200,150,60,0.08);border:1px solid rgba(200,150,60,0.18);border-radius:99px;padding:5px 13px;margin-bottom:16px;}
-.eyebrow-dot{width:5px;height:5px;border-radius:50%;background:#c8963c;}
-.eyebrow-text{font-size:10px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:#c8963c;}
-.hero-city{font-family:'Cormorant Garamond',serif;font-size:50px;font-weight:700;color:#f5f0e8;line-height:0.95;letter-spacing:-1px;}
-.hero-country{font-size:12px;color:#3a3020;letter-spacing:0.2em;text-transform:uppercase;margin-top:10px;}
-.hero-right{text-align:right;padding-top:8px;}
-.temp-big{font-family:'Cormorant Garamond',serif;font-size:84px;font-weight:600;color:#ffffff;line-height:1;letter-spacing:-4px;}
-.temp-deg{font-size:38px;color:#c8963c;vertical-align:super;}
-.weather-icon-hero{font-size:26px;display:block;margin-bottom:4px;text-align:right;}
-.temp-desc{font-size:14px;color:#6a5a3a;margin-top:4px;font-weight:300;}
-.temp-feels{font-size:12px;color:#3a3020;margin-top:3px;}
-/* GOLD RULE */
-.gold-rule{height:1px;background:linear-gradient(90deg,transparent,rgba(200,150,60,0.4) 30%,rgba(200,150,60,0.4) 70%,transparent);margin:0 36px;}
-/* STATS */
-.stats-bar{display:flex;border-bottom:1px solid rgba(255,255,255,0.04);}
-.stat{flex:1;text-align:center;padding:16px 8px;border-right:1px solid rgba(255,255,255,0.04);}
-.stat:last-child{border-right:none;}
-.stat-icon{font-size:18px;display:block;margin-bottom:6px;}
-.stat-val{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:#e8dcc8;}
-.stat-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:0.14em;color:#2a2518;margin-top:3px;}
-/* HOURLY FORECAST */
-.fc-wrap{padding:24px 36px 8px;}
-.fc-title{font-size:9.5px;text-transform:uppercase;letter-spacing:0.18em;color:#3a3020;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
-.fc-title::before{content:'';flex:0 0 16px;height:1px;background:rgba(200,150,60,0.3);}
-.fc-title::after{content:'';flex:1;height:1px;background:rgba(200,150,60,0.3);}
-.fc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
-.fc-row:last-child{border-bottom:none;}
-.fc-time{font-size:12px;color:#6a5a3a;font-weight:500;min-width:68px;font-family:'Cormorant Garamond',serif;}
-.fc-icon{font-size:18px;min-width:28px;text-align:center;}
-.fc-desc{font-size:12px;color:#7a6a50;flex:1;font-weight:300;}
-.fc-temp{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:#e8dcc8;min-width:52px;text-align:right;}
-.fc-rain{font-size:11px;color:#3a3020;min-width:58px;text-align:right;}
-/* CONTENT SECTIONS */
-.sections{padding:8px 0;}
-.sec{padding:22px 36px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;gap:20px;align-items:flex-start;}
-.sec:last-child{border-bottom:none;}
-.sec-left{flex-shrink:0;width:36px;text-align:center;padding-top:2px;}
-.sec-num{font-family:'Cormorant Garamond',serif;font-size:11px;font-weight:600;color:#c8963c;display:block;margin-top:6px;}
-.sec-icon{font-size:22px;display:block;}
-.sec-right{flex:1;}
-.sec-label{font-size:9.5px;text-transform:uppercase;letter-spacing:0.18em;color:#3a3020;font-weight:600;margin-bottom:8px;display:block;}
-.sec-body{font-size:15px;line-height:1.75;color:#b8a888;font-weight:300;}
-/* NAMAZ GRID */
-.namaz-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:2px;}
-.namaz-cell{background:rgba(200,150,60,0.04);border:1px solid rgba(200,150,60,0.1);border-radius:12px;padding:12px 10px;text-align:center;}
-.namaz-emoji{font-size:16px;display:block;margin-bottom:5px;}
-.namaz-name{font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:#4a3a20;font-weight:600;display:block;margin-bottom:4px;}
-.namaz-time{font-family:'Cormorant Garamond',serif;font-size:15px;font-weight:600;color:#c8963c;}
-/* MOTIVATION */
-.motivation-wrap{margin:4px 36px 24px;background:linear-gradient(135deg,rgba(200,150,60,0.06),rgba(200,150,60,0.02));border:1px solid rgba(200,150,60,0.15);border-radius:18px;padding:26px 28px;text-align:center;}
-.motivation-text{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:400;font-style:italic;color:#c8963c;line-height:1.55;}
-/* REPLY BUTTON */
-.reply-wrap{padding:4px 36px 28px;text-align:center;}
-.reply-btn{display:inline-block;background:linear-gradient(135deg,#c8963c,#e8b84a);color:#0a0806 !important;text-decoration:none !important;font-size:13px;font-weight:600;padding:14px 36px;border-radius:99px;box-shadow:0 8px 24px rgba(200,150,60,0.25);}
-.reply-hint{font-size:11px;color:#2a2518;margin-top:10px;}
-/* FOOTER */
-.footer{padding:16px 36px 20px;border-top:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:space-between;}
-.footer-left{font-size:10.5px;color:#1e1810;font-family:'Courier New',monospace;}
-.footer-right{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:#3a3020;}
-.footer-right span{color:#c8963c;}
-.bottom{text-align:center;margin-top:20px;font-size:10px;color:#18140c;letter-spacing:0.16em;text-transform:uppercase;}
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0f0f1a; font-family:'DM Sans',sans-serif; color:#e8e8f0; padding:20px; }
+  .wrapper {
+    max-width:600px; margin:0 auto;
+    background:linear-gradient(145deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+    border-radius:24px; overflow:hidden; border:1px solid rgba(255,255,255,0.08);
+  }
+  .header {
+    background:linear-gradient(135deg,#1e3c72 0%,#2a5298 100%);
+    padding:40px 36px 32px; text-align:center; position:relative;
+  }
+  .header::after {
+    content:''; position:absolute; bottom:-1px; left:0; right:0; height:40px;
+    background:#1a1a2e; clip-path:ellipse(55% 100% at 50% 100%);
+  }
+  .date-badge {
+    display:inline-block; background:rgba(255,255,255,0.12);
+    border:1px solid rgba(255,255,255,0.2); border-radius:20px;
+    padding:6px 16px; font-size:12px; letter-spacing:1.5px;
+    text-transform:uppercase; margin-bottom:20px; color:#a8c4e8;
+  }
+  .city-name { font-family:'Playfair Display',serif; font-size:36px; font-weight:700; color:#fff; margin-bottom:6px; letter-spacing:-0.5px; }
+  .country { font-size:13px; color:#7eadd4; letter-spacing:2px; text-transform:uppercase; }
+  .temp-hero { text-align:center; padding:40px 36px 20px; }
+  .weather-icon { font-size:64px; line-height:1; margin-bottom:12px; display:block; }
+  .temp-display { font-family:'Playfair Display',serif; font-size:80px; font-weight:700; color:#fff; line-height:1; letter-spacing:-3px; }
+  .temp-unit { font-size:36px; color:#7eadd4; vertical-align:super; }
+  .weather-desc { font-size:18px; color:#a8c4e8; margin-top:8px; font-weight:300; letter-spacing:0.5px; }
+  .feels-like { font-size:13px; color:#6a8aaa; margin-top:6px; }
+  .stats-row {
+    display:flex; margin:24px 36px;
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+    border-radius:16px; overflow:hidden;
+  }
+  .stat { flex:1; text-align:center; padding:16px 8px; border-right:1px solid rgba(255,255,255,0.06); }
+  .stat:last-child { border-right:none; }
+  .stat-icon { font-size:20px; display:block; margin-bottom:6px; }
+  .stat-value { font-size:18px; font-weight:500; color:#fff; }
+  .stat-label { font-size:11px; color:#5a7a9a; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
+  .section { margin:0 36px 24px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:24px; }
+  .section-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .section-icon { font-size:20px; }
+  .section-title { font-size:11px; text-transform:uppercase; letter-spacing:2px; color:#5a7a9a; font-weight:500; }
+  .section-body { font-size:15px; line-height:1.7; color:#c8d8e8; font-weight:300; }
+  .namaz-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px; }
+  .namaz-item { background:rgba(255,255,255,0.04); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; }
+  .namaz-name { font-size:13px; color:#7eadd4; font-weight:500; }
+  .namaz-time { font-size:13px; color:#fff; font-weight:400; }
+  .motivation { margin:0 36px 24px; background:linear-gradient(135deg,rgba(30,60,114,0.5),rgba(42,82,152,0.3)); border:1px solid rgba(126,173,212,0.2); border-radius:16px; padding:24px; text-align:center; }
+  .motivation-text { font-family:'Playfair Display',serif; font-size:17px; color:#a8c4e8; line-height:1.6; font-style:italic; }
+  .footer { text-align:center; padding:20px 36px 32px; border-top:1px solid rgba(255,255,255,0.05); }
+  .footer-text { font-size:12px; color:#3a5a7a; letter-spacing:0.5px; }
+  .footer-brand { font-size:13px; color:#5a7a9a; margin-top:6px; font-weight:500; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="topbar">
-    <span class="topbar-brand">Daily Briefing</span>
-    <span class="topbar-date">TOPBAR_DATE</span>
+<div class="wrapper">
+
+  <div class="header">
+    <div class="date-badge">""" + today + """</div>
+    <div class="city-name">""" + weather['city'] + """</div>
+    <div class="country">Pakistan &nbsp;|&nbsp; Daily Briefing</div>
   </div>
-  <div class="card">
-    <!-- HERO -->
-    <div class="hero">
-      <div class="hero-glow-top"></div>
-      <div class="hero-glow-side"></div>
-      <div class="hero-content">
-        <div class="hero-left">
-          <div class="hero-eyebrow">
-            <div class="eyebrow-dot"></div>
-            <span class="eyebrow-text">TODAY_FULL</span>
-          </div>
-          <div class="hero-city">CITY_NAME</div>
-          <div class="hero-country">Islamic Republic of Pakistan</div>
-        </div>
-        <div class="hero-right">
-          <span class="weather-icon-hero">HERO_ICON</span>
-          <div class="temp-big">TEMPERATURE<span class="temp-deg">&#176;</span></div>
-          <div class="temp-desc">DESCRIPTION</div>
-          <div class="temp-feels">Feels like FEELS_LIKE&#176;C</div>
-        </div>
-      </div>
+
+  <div class="temp-hero">
+    <span class="weather-icon">""" + weather_icon + """</span>
+    <div><span class="temp-display">""" + str(weather['temperature']) + """<span class="temp-unit">°C</span></span></div>
+    <div class="weather-desc">""" + weather['description'] + """</div>
+    <div class="feels-like">Feels like """ + str(weather['feels_like']) + """°C</div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-icon">&#128167;</span>
+      <div class="stat-value">""" + str(weather['humidity']) + """%</div>
+      <div class="stat-label">Humidity</div>
     </div>
-    <!-- GOLD RULE -->
-    <div class="gold-rule"></div>
-    <!-- STATS -->
-    <div class="stats-bar">
-      <div class="stat"><span class="stat-icon">&#128167;</span><div class="stat-val">HUMIDITY%</div><div class="stat-lbl">Humidity</div></div>
-      <div class="stat"><span class="stat-icon">&#127746;</span><div class="stat-val">RAIN_PROB%</div><div class="stat-lbl">Rain</div></div>
-      <div class="stat"><span class="stat-icon">&#128168;</span><div class="stat-val">WIND m/s</div><div class="stat-lbl">Wind</div></div>
+    <div class="stat">
+      <span class="stat-icon">&#9748;</span>
+      <div class="stat-value">""" + str(weather['rain_probability']) + """%</div>
+      <div class="stat-label">Rain</div>
     </div>
-    <!-- HOURLY FORECAST -->
-    <div class="fc-wrap">
-      <div class="fc-title">Hourly Forecast · Today</div>
-      FORECAST_ROWS
-    </div>
-    <!-- SECTIONS -->
-    <div class="sections">
-      <div class="sec">
-        <div class="sec-left"><span class="sec-icon">&#127780;</span><span class="sec-num">01</span></div>
-        <div class="sec-right"><span class="sec-label">Day Summary</span><div class="sec-body">SUMMARY</div></div>
-      </div>
-      <div class="sec">
-        <div class="sec-left"><span class="sec-icon">&#128085;</span><span class="sec-num">02</span></div>
-        <div class="sec-right"><span class="sec-label">What to Wear &amp; Prep</span><div class="sec-body">OUTFIT</div></div>
-      </div>
-      <div class="sec">
-        <div class="sec-left"><span class="sec-icon">&#128332;</span><span class="sec-num">03</span></div>
-        <div class="sec-right">
-          <span class="sec-label">Prayer &amp; Sun Schedule</span>
-          <div class="namaz-grid">
-            <div class="namaz-cell"><span class="namaz-emoji">&#127749;</span><span class="namaz-name">Fajr</span><span class="namaz-time">FAJR</span></div>
-            <div class="namaz-cell"><span class="namaz-emoji">&#9728;</span><span class="namaz-name">Sunrise</span><span class="namaz-time">SUNRISE</span></div>
-            <div class="namaz-cell"><span class="namaz-emoji">&#127774;</span><span class="namaz-name">Dhuhr</span><span class="namaz-time">DHUHR</span></div>
-            <div class="namaz-cell"><span class="namaz-emoji">&#127751;</span><span class="namaz-name">Asr</span><span class="namaz-time">ASR</span></div>
-            <div class="namaz-cell"><span class="namaz-emoji">&#127750;</span><span class="namaz-name">Maghrib</span><span class="namaz-time">MAGHRIB</span></div>
-            <div class="namaz-cell"><span class="namaz-emoji">&#127769;</span><span class="namaz-name">Isha</span><span class="namaz-time">ISHA</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- MOTIVATION -->
-    <div class="motivation-wrap">
-      <div class="motivation-text">MOTIVATION</div>
-    </div>
-    <!-- REPLY BUTTON -->
-    <div class="reply-wrap">
-      <a href="MAILTO_LINK" class="reply-btn">&#128172; &nbsp; Ask a Question</a>
-      <div class="reply-hint">Have a question about today's weather? Just hit reply — AI answers instantly.</div>
-    </div>
-    <!-- FOOTER -->
-    <div class="footer">
-      <div class="footer-left">auto-delivered · islamabad · pkt</div>
-      <div class="footer-right">by <span>Abdullah Adnan</span></div>
+    <div class="stat">
+      <span class="stat-icon">&#128168;</span>
+      <div class="stat-value">""" + str(weather['wind_speed']) + """ m/s</div>
+      <div class="stat-label">Wind</div>
     </div>
   </div>
-  <div class="bottom">Powered by Groq &amp; OpenWeather · Built by Abdullah</div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#127780;&#65039;</span>
+      <span class="section-title">Weather Summary</span>
+    </div>
+    <div class="section-body">""" + summary + """</div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#128085;</span>
+      <span class="section-title">What to Wear &amp; Prep</span>
+    </div>
+    <div class="section-body">""" + outfit + """</div>
+  </div>
+
+  <!-- 24-HOUR FORECAST -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#128336;</span>
+      <span class="section-title">24-Hour Forecast</span>
+    </div>
+    <div style="margin-top:4px;">""" + forecast_html + """</div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#128332;</span>
+      <span class="section-title">Prayer &amp; Sun Schedule</span>
+    </div>
+    <div class="namaz-grid">
+      <div class="namaz-item"><span class="namaz-name">&#127749; Fajr</span><span class="namaz-time">""" + namaz['Fajr'] + """</span></div>
+      <div class="namaz-item"><span class="namaz-name">&#9728;&#65039; Sunrise</span><span class="namaz-time">""" + namaz['Sunrise'] + """</span></div>
+      <div class="namaz-item"><span class="namaz-name">&#127774; Dhuhr</span><span class="namaz-time">""" + namaz['Dhuhr'] + """</span></div>
+      <div class="namaz-item"><span class="namaz-name">&#127751; Asr</span><span class="namaz-time">""" + namaz['Asr'] + """</span></div>
+      <div class="namaz-item"><span class="namaz-name">&#127750; Maghrib</span><span class="namaz-time">""" + namaz['Maghrib'] + """</span></div>
+      <div class="namaz-item"><span class="namaz-name">&#127769; Isha</span><span class="namaz-time">""" + namaz['Isha'] + """</span></div>
+    </div>
+  </div>
+
+  <div class="motivation">
+    <div class="motivation-text">"" + motivation + ""</div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-text">Delivered fresh every morning &#9749;</div>
+    <div class="footer-brand">&#10024; Made &amp; Designed by Abdullah</div>
+  </div>
+
 </div>
 </body>
 </html>"""
 
-    html = html.replace("TOPBAR_DATE",   today_short)
-    html = html.replace("TODAY_FULL",    today_full)
-    html = html.replace("CITY_NAME",     weather["city"])
-    html = html.replace("HERO_ICON",     hero_icon)
-    html = html.replace("TEMPERATURE",   str(weather["temperature"]))
-    html = html.replace("DESCRIPTION",   weather["description"])
-    html = html.replace("FEELS_LIKE",    str(weather["feels_like"]))
-    html = html.replace("HUMIDITY",      str(weather["humidity"]))
-    html = html.replace("RAIN_PROB",     str(slots[0]["rain"] if slots else 0))
-    html = html.replace("WIND",          str(weather["wind_speed"]))
-    html = html.replace("FORECAST_ROWS", forecast_rows)
-    html = html.replace("SUMMARY",       summary)
-    html = html.replace("OUTFIT",        outfit)
-    html = html.replace("MOTIVATION",    motivation)
-    html = html.replace("FAJR",          namaz["Fajr"])
-    html = html.replace("SUNRISE",       namaz["Sunrise"])
-    html = html.replace("DHUHR",         namaz["Dhuhr"])
-    html = html.replace("ASR",           namaz["Asr"])
-    html = html.replace("MAGHRIB",       namaz["Maghrib"])
-    html = html.replace("ISHA",          namaz["Isha"])
-    html = html.replace("MAILTO_LINK",   mailto_link)
-
     return html
 
+def send_email(sender_email, sender_password, recipient_email, weather, namaz, advice, forecast_slots):
+    subject = "&#128241; Your Daily Weather & Schedule App"
 
-def send_email(sender_email, sender_password, recipient_email, weather, slots, namaz, advice):
-    subject = "🌤️ Your Daily Weather & Schedule — Islamabad"
+    html_content = build_html_email(weather, namaz, advice, forecast_slots)
 
-    html_content = build_html_email(weather, slots, namaz, advice, sender_email)
+    msg = MIMEMultipart('alternative')
+    msg["Subject"] = "📱 Your Daily Weather & Schedule App"
+    msg["From"] = sender_email
+    msg["To"] = recipient_email
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = sender_email
-    msg["To"]      = recipient_email
-
-    msg.attach(MIMEText(html_content, "html", "utf-8"))
+    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
 
     with smtplib.SMTP("smtp.gmail.com", 587) as server:
         server.starttls()
         server.login(sender_email, sender_password)
         server.send_message(msg)
 
-
 def main():
     email       = os.environ["EMAIL_ADDRESS"]
     password    = os.environ["EMAIL_PASSWORD"]
     weather_key = os.environ["WEATHER_API_KEY"]
     groq_key    = os.environ["GROQ_API_KEY"]
-    recipient   = os.environ.get("EMAIL_RECIPIENT", "abdullahpk998989898@gmail.com")
+    recipient   = os.environ.get("EMAIL_RECIPIENT", "adspk243@gmail.com")
 
     city = "Islamabad"
 
-    weather_data = get_weather_current(city, weather_key)
-    forecast_slots = get_forecast_slots(city, weather_key)
-    namaz_data   = get_namaz_times(city)
-    daily_advice = get_groq_summary(weather_data, forecast_slots, groq_key)
+    weather_data   = get_weather(city, weather_key)
+    forecast_slots = get_forecast_slots(weather_data.pop("forecast_raw"))
+    namaz_data     = get_namaz_times(city)
+    daily_advice   = get_groq_advice(weather_data, forecast_slots, groq_key)
 
-    send_email(email, password, recipient, weather_data, forecast_slots, namaz_data, daily_advice)
-
+    send_email(email, password, recipient, weather_data, namaz_data, daily_advice, forecast_slots)
 
 if __name__ == "__main__":
     main()
